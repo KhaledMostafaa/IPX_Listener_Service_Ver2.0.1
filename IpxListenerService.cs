@@ -177,7 +177,23 @@ namespace IpxListenerService
             try
             {
                 _logger.LogInformation("Initializing database...");
-                Program.EnsureDatabaseCreated();
+                bool dbReady = false;
+                while (!dbReady && !_cancellationTokenSource.Token.IsCancellationRequested)
+                {
+                    dbReady = Program.EnsureDatabaseCreated(maxRetries: 1, delaySeconds: 0);
+                    if (!dbReady)
+                    {
+                        _logger.LogWarning("PostgreSQL is not reachable yet. Retrying database initialization in 10 seconds...");
+                        try
+                        {
+                            await Task.Delay(10000, _cancellationTokenSource.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return;
+                        }
+                    }
+                }
                 _logger.LogInformation("Database initialization complete. Loading configs...");
 
                 _currentSettings = JsonLoader.LoadGlobalSettings(_settingsPath);

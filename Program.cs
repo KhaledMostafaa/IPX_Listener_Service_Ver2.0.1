@@ -111,15 +111,12 @@ namespace IpxListenerService
 
                 var app = builder.Build();
 
-                // Automatically ensure database is created and all pending migrations are applied on startup
-                try
+                // Attempt to ensure database is created and all pending migrations are applied on startup
+                // If PostgreSQL is not reachable, retry with backoff and allow Web API to stay online
+                var dbReady = EnsureDatabaseCreated(maxRetries: 3, delaySeconds: 2);
+                if (!dbReady)
                 {
-                    EnsureDatabaseCreated();
-                }
-                catch (Exception ex)
-                {
-                    Log.Fatal(ex, "Failed to apply database migrations on startup.");
-                    throw;
+                    Log.Warning("PostgreSQL is not reachable on startup. The Web API will stay online so you can check logs and health via /swagger or /api/logs. Background worker will retry database initialization.");
                 }
 
                 // Enable Swagger UI
@@ -150,7 +147,7 @@ namespace IpxListenerService
             }
         }
 
-        public static void EnsureDatabaseCreated()
+        public static bool EnsureDatabaseCreated(int maxRetries = 3, int delaySeconds = 2)
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             var configPath = Path.Combine(baseDir, "settings.json");
@@ -171,34 +168,48 @@ namespace IpxListenerService
             var connectionString = GetPostgresConnectionString(settings?.GlobalSettings?.Database);
             Log.Information($"Database ConnectionString resolved: {MaskConnectionString(connectionString)}");
 
-            var optionsBuilder = new DbContextOptionsBuilder<DatabaseContext>();
-            optionsBuilder.UseNpgsql(connectionString);
-            optionsBuilder.UseLoggerFactory(new SerilogLoggerFactory(Log.Logger));
-
-            using var dbContext = new DatabaseContext(optionsBuilder.Options);
-            Log.Information("Checking database and applying all pending migrations...");
-
-            try
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                var pendingMigrations = dbContext.Database.GetPendingMigrations().ToList();
-                if (pendingMigrations.Count > 0)
+                try
                 {
-                    Log.Information($"Found {pendingMigrations.Count} pending migration(s): {string.Join(", ", pendingMigrations)}");
-                    Log.Information("Applying migrations...");
-                }
-                else
-                {
-                    Log.Information("No pending migrations found. Ensuring database schema is up-to-date...");
-                }
+                    var optionsBuilder = new DbContextOptionsBuilder<DatabaseContext>();
+                    optionsBuilder.UseNpgsql(connectionString);
+                    optionsBuilder.UseLoggerFactory(new SerilogLoggerFactory(Log.Logger));
 
-                dbContext.Database.Migrate();
-                Log.Information("Database check and migration completed successfully.");
+                    using var dbContext = new DatabaseContext(optionsBuilder.Options);
+                    Log.Information($"Checking database and applying migrations (attempt {attempt}/{maxRetries})...");
+
+                    var pendingMigrations = dbContext.Database.GetPendingMigrations().ToList();
+                    if (pendingMigrations.Count > 0)
+                    {
+                        Log.Information($"Found {pendingMigrations.Count} pending migration(s): {string.Join(", ", pendingMigrations)}");
+                        Log.Information("Applying migrations...");
+                    }
+                    else
+                    {
+                        Log.Information("No pending migrations found. Ensuring database schema is up-to-date...");
+                    }
+
+                    dbContext.Database.Migrate();
+                    Log.Information("Database check and migration completed successfully.");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    if (attempt < maxRetries)
+                    {
+                        Log.Warning($"Database connection attempt {attempt} failed: {ex.Message}. Retrying in {delaySeconds}s...");
+                        Thread.Sleep(delaySeconds * 1000);
+                    }
+                    else
+                    {
+                        Log.Error(ex, $"Failed to connect to database or apply migrations after {maxRetries} attempt(s). Target: {MaskConnectionString(connectionString)}. Check if PostgreSQL service is running and accessible on 127.0.0.1:5432.");
+                        return false;
+                    }
+                }
             }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to create database or apply migrations.");
-                throw;
-            }
+
+            return false;
         }
 
         public static string MaskConnectionString(string connStr)
