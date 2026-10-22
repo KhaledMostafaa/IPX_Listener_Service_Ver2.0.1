@@ -1,7 +1,7 @@
-// using LicenseChkManager;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Serilog.Core;
+using Serilog.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -16,12 +16,16 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+using IpxListenerService.Common;
+using IpxListenerService.Data;
+using IpxListenerService.Models;
 
 namespace IpxListenerService
 {
-    public class IpxListenerService : ServiceBase
+    public class IpxListenerService : ServiceBase, Microsoft.Extensions.Hosting.IHostedService
     {
         private readonly ILogger _logger;
+        private readonly ILoggerFactory _loggerFactory;
         private CancellationTokenSource _cancellationTokenSource;
         private readonly List<InstanceWorker> _workers = new List<InstanceWorker>();
         private FileWatcher _fileWatcher;
@@ -30,30 +34,42 @@ namespace IpxListenerService
         private string _settingsPath;
         private string _instancesPath;
         private int _restartAttempts = 0;
-        // private System.Timers.Timer _licenseCheckTimer;
-        // private System.Timers.Timer _backgroundLicenseTimer;
 
 
         public bool IsRunning { get; private set; }
+        public IReadOnlyList<InstanceWorker> Workers => _workers.AsReadOnly();
+        public GlobalSettingsRoot CurrentSettings => _currentSettings;
+        public string BaseDirectory => _baseDir ?? GetExecutableDirectory();
+        public string SettingsPath => _settingsPath ?? Path.Combine(BaseDirectory, "settings.json");
+        public string InstancesPath => _instancesPath ?? Path.Combine(BaseDirectory, "instances.json");
         
         // Event for console mode restart
         public event EventHandler RestartRequested;
 
-        public IpxListenerService()
+        public IpxListenerService() : this(null, null)
+        {
+        }
+
+        public IpxListenerService(ILogger<IpxListenerService>? logger = null, ILoggerFactory? loggerFactory = null)
         {
             ServiceName = "IPXSListenerService";
 
-            // Initialize the timer
-            // _licenseCheckTimer = new System.Timers.Timer();
+            _loggerFactory = loggerFactory ?? new SerilogLoggerFactory(Serilog.Log.Logger);
+            _logger = logger ?? _loggerFactory.CreateLogger<IpxListenerService>();
+        }
 
-            _logger = LoggerFactory.Create(builder =>
-            {
-                builder.AddSimpleConsole(o =>
-                {
-                    o.IncludeScopes = false;
-                    o.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
-                });
-            }).CreateLogger<IpxListenerService>();
+        public Task StartAsync(CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Starting IpxListenerService via IHostedService...");
+            OnStart(null);
+            return Task.CompletedTask;
+        }
+
+        public async Task StopAsync(CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Stopping IpxListenerService via IHostedService...");
+            OnStop();
+            await Task.CompletedTask;
         }
 
         private string GetExecutableDirectory()
@@ -102,14 +118,6 @@ namespace IpxListenerService
                 _logger.LogInformation($"Instances file path: {_instancesPath}");
 
                 _ = Task.Run(() => RunServiceAsync(), _cancellationTokenSource.Token);
-
-                // --- Background license check commented out to run app without license restrictions ---
-                // _backgroundLicenseTimer = new System.Timers.Timer(43200000); // 12 ساعة = 12 * 60 * 60 * 1000
-                // _backgroundLicenseTimer.Elapsed += BackgroundLicenseCheck;
-                // _backgroundLicenseTimer.AutoReset = true;
-                // _backgroundLicenseTimer.Enabled = true;
-
-                // _logger.LogInformation("Background license monitoring started successfully.");
             }
             catch (Exception ex)
             {
@@ -118,203 +126,17 @@ namespace IpxListenerService
             }
         }
 
-        /*
-        private void BackgroundLicenseCheck(object sender, ElapsedEventArgs e)
-        {
-            try
-            {
-                _logger.LogInformation("Performing background license check...");
-
-                const string productName = "IPXSListenerService";
-                string activeLicenseKey = Program.GetLicenseKeyFromSources(productName);
-
-                if (string.IsNullOrWhiteSpace(activeLicenseKey))
-                {
-                    _logger.LogWarning("No license key found during background check.");
-                    return;
-                }
-
-                var licenseManager = new LicenseManager();
-                LicenseData licenseData = licenseManager.ValidateAndDecryptLicenseKey(activeLicenseKey);
-
-                if (licenseData == null || !string.Equals(licenseData.ApplicationName, productName, StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogError("License validation failed (invalid application name). Stopping service.");
-                    Stop();
-                    return;
-                }
-
-                if (licenseData.ExpirationDate < DateTime.UtcNow)
-                {
-                    _logger.LogError($"License expired on {licenseData.ExpirationDate}. Stopping service.");
-                    Stop();
-                    return;
-                }
-
-                _logger.LogInformation($"License check passed. Valid until {licenseData.ExpirationDate:yyyy-MM-dd}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during background license check.");
-            }
-        }
-        */
-
-
-
-
-        //protected override void OnStart(string[] args)
-        //{
-        //    _logger.LogInformation("Service is starting...");
-
-        //    // Request additional time to prevent timeout during initialization
-        //    RequestAdditionalTime(60000); // Request 60 seconds additional time
-
-        //    //==========================================
-        //    var isLicensed = EncryptionHelper.CheckLicenseValedity();
-
-        //    // Check license on start
-        //    if (!isLicensed.StartsWith("[1001]"))
-        //    {
-        //        _logger.LogError("License is not active. Stopping service.");
-        //        Stop();
-        //        return;
-        //    }
-
-        //    // Configure and start a timer to check the license every 12 hours (43200000 milliseconds)
-        //    _licenseCheckTimer = new System.Timers.Timer(2000);
-        //    _licenseCheckTimer.Elapsed += OnLicenseCheckElapsed;
-        //    _licenseCheckTimer.AutoReset = true;
-        //    _licenseCheckTimer.Enabled = true;
-
-        //    //==========================================
-
-        //    IsRunning = true;
-        //    _cancellationTokenSource = new CancellationTokenSource();
-
-        //    // Initialize paths - use executable directory
-        //    _baseDir = GetExecutableDirectory();
-        //    _settingsPath = Path.Combine(_baseDir, "settings.json");
-        //    _instancesPath = Path.Combine(_baseDir, "instances.json");
-
-        //    _logger.LogInformation($"Using project root directory: {_baseDir}");
-        //    _logger.LogInformation($"Settings file path: {_settingsPath}");
-        //    _logger.LogInformation($"Instances file path: {_instancesPath}");
-
-        //    // Immediately signal that the service has started
-        //    // and perform initialization in the background
-        //    _ = Task.Run(() => RunServiceAsync(), _cancellationTokenSource.Token);
-
-        //    _logger.LogInformation("Service start signal sent to SCM, continuing initialization in background...");
-        //}
-
-        // Add this method to the IpxListenerService class
-        //private void RequestAdditionalTime(int milliseconds)
-        //{
-        //    try
-        //    {
-        //        // This method informs SCM that we need more time to start
-        //        var service = this as ServiceBase;
-        //        service?.RequestAdditionalTime(milliseconds);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _logger.LogWarning(ex, "Could not request additional time from SCM");
-        //    }
-        //}
-
-        //protected override void OnStart(string[] args)
-        //{
-        //    _logger.LogInformation("Service is starting...");
-
-        //    //==========================================
-        //    var isLicensed = EncryptionHelper.CheckLicenseValedity();
-
-        //    // Check license on start
-
-        //    if (!isLicensed.StartsWith("[1001]"))
-        //    {
-        //        _logger.LogError("License is not active. Stopping service.");
-        //        Stop();
-        //        return;
-        //    }
-
-        //    // Configure and start a timer to check the license every 12 hours (43200000 milliseconds)
-        //    _licenseCheckTimer = new System.Timers.Timer(2000);
-        //    _licenseCheckTimer.Elapsed += OnLicenseCheckElapsed;
-        //    _licenseCheckTimer.AutoReset = true;
-        //    _licenseCheckTimer.Enabled = true;
-
-        //    //==========================================
-
-        //    IsRunning = true;
-        //    _cancellationTokenSource = new CancellationTokenSource();
-
-        //    // Initialize paths - use executable directory
-        //    _baseDir = GetExecutableDirectory();
-        //    _settingsPath = Path.Combine(_baseDir, "settings.json");
-        //    _instancesPath = Path.Combine(_baseDir, "instances.json");
-
-        //    _logger.LogInformation($"Using project root directory: {_baseDir}");
-        //    _logger.LogInformation($"Settings file path: {_settingsPath}");
-        //    _logger.LogInformation($"Instances file path: {_instancesPath}");
-
-        //    // Kick off background
-        //    _ = Task.Run(RunServiceAsync, _cancellationTokenSource.Token);
-        //}
-
-        /*
-        private void OnLicenseCheckElapsed(object sender, ElapsedEventArgs e)
-        {
-            try
-            {
-                _logger.LogInformation("Performing periodic license check...");
-                var isLicensed = EncryptionHelper.CheckLicenseValedity();
-
-                if (!isLicensed.StartsWith("[1001]"))
-                {
-                    _logger.LogWarning("License check failed. Will retry in next cycle.");
-                }
-                else
-                {
-                    _logger.LogInformation("License verified successfully.");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during periodic license check.");
-            }
-        }
-        */
-
-
-        //private void OnLicenseCheckElapsed(object sender, ElapsedEventArgs e)
-        //{
-        //    _logger.LogInformation("Performing periodic license check.");
-        //    var isLicensed = EncryptionHelper.CheckLicenseValedity();
-
-        //    if (!isLicensed.StartsWith("[1001]"))
-        //    {
-        //        _logger.LogError("License is no longer active. Stopping service.");
-        //        _licenseCheckTimer.Enabled = false; // Disable the timer to prevent re-entry
-        //        Stop();
-        //    }
-        //}
-
         protected override void OnStop()
         {
             _logger.LogInformation("Service is stopping...");
 
-            _cancellationTokenSource?.Cancel();
             IsRunning = false;
-            // _licenseCheckTimer?.Dispose();
-            _logger.LogInformation("Service is stopped.");
 
-
-
-
-
-            IsRunning = false;
+            try
+            {
+                _cancellationTokenSource?.Cancel();
+            }
+            catch { /* ignore */ }
 
             // Dispose file watcher first
             try
@@ -326,12 +148,6 @@ namespace IpxListenerService
             {
                 _logger.LogWarning(ex, "Error disposing file watcher.");
             }
-
-            try
-            {
-                _cancellationTokenSource?.Cancel();
-            }
-            catch { /* ignore */ }
 
             // Ask each worker to stop and wait up to 10s total
             var stopTasks = _workers.Select(w => w.StopAsync()).ToArray();
@@ -352,7 +168,8 @@ namespace IpxListenerService
                 }
             }
 
-            _logger.LogInformation("Service stopped.");
+            _workers.Clear();
+            _logger.LogInformation("Service is stopped.");
         }
 
         private async Task RunServiceAsync()
@@ -413,9 +230,7 @@ namespace IpxListenerService
                 
                 var instances = JsonLoader.LoadInstances(_instancesPath);
 
-                var connStr = !string.IsNullOrWhiteSpace(settings.GlobalSettings.Database.Url)
-                    ? Program.ParsePostgresConnectionStringFromUri(settings.GlobalSettings.Database.Url)
-                    : Program.BuildConnectionStringFromParts(settings.GlobalSettings.Database);
+                var connStr = Program.GetPostgresConnectionString(settings.GlobalSettings.Database);
 
                 var dbFactory = new DatabaseContextFactory(connStr);
 
@@ -430,7 +245,7 @@ namespace IpxListenerService
                     try
                     {
                         _logger.LogInformation($"Starting worker for instance '{instanceId}'...");
-                        var worker = new InstanceWorker(instanceId, cfg, settings.GlobalSettings, dbFactory, _cancellationTokenSource.Token);
+                        var worker = new InstanceWorker(instanceId, cfg, settings.GlobalSettings, dbFactory, _cancellationTokenSource.Token, _loggerFactory);
                         _workers.Add(worker);
                         worker.Start();
                     }
@@ -628,7 +443,7 @@ namespace IpxListenerService
             }
         }
 
-        private async Task RegenerateInstancesAsync()
+        public async Task RegenerateInstancesAsync()
         {
             try
             {
@@ -736,7 +551,7 @@ namespace IpxListenerService
             }
         }
 
-        private async Task ReloadWorkersAsync()
+        public async Task ReloadWorkersAsync()
         {
             try
             {
@@ -785,9 +600,7 @@ namespace IpxListenerService
                 
                 var instances = JsonLoader.LoadInstances(_instancesPath);
                 
-                var connStr = !string.IsNullOrWhiteSpace(_currentSettings.GlobalSettings.Database.Url)
-                    ? Program.ParsePostgresConnectionStringFromUri(_currentSettings.GlobalSettings.Database.Url)
-                    : Program.BuildConnectionStringFromParts(_currentSettings.GlobalSettings.Database);
+                var connStr = Program.GetPostgresConnectionString(_currentSettings.GlobalSettings.Database);
                 
                 var dbFactory = new DatabaseContextFactory(connStr);
                 
@@ -801,7 +614,7 @@ namespace IpxListenerService
                     try
                     {
                         _logger.LogInformation($"Starting worker for instance '{instanceId}'...");
-                        var worker = new InstanceWorker(instanceId, cfg, _currentSettings.GlobalSettings, dbFactory, _cancellationTokenSource.Token);
+                        var worker = new InstanceWorker(instanceId, cfg, _currentSettings.GlobalSettings, dbFactory, _cancellationTokenSource.Token, _loggerFactory);
                         _workers.Add(worker);
                         worker.Start();
                     }
@@ -823,6 +636,7 @@ namespace IpxListenerService
     public class InstanceWorker
     {
         private readonly string _instanceId;
+        private readonly InstanceConfig _config;
         private readonly CancellationToken _cancellationToken;
         private readonly ILogger _logger;
         private Task _workerTask;
@@ -830,12 +644,17 @@ namespace IpxListenerService
         private readonly IpxFilter _filter;
         private readonly DatabaseContextFactory _dbFactory;
 
+        public string InstanceId => _instanceId;
+        public InstanceConfig Config => _config;
+
         public InstanceWorker(string instanceId, InstanceConfig config, GlobalSettings globalSettings,
-                              DatabaseContextFactory dbContextFactory, CancellationToken cancellationToken)
+                              DatabaseContextFactory dbContextFactory, CancellationToken cancellationToken,
+                              ILoggerFactory? loggerFactory = null)
         {
             _instanceId = instanceId;
+            _config = config;
             _cancellationToken = cancellationToken;
-            _logger = LoggerFactory.Create(builder => builder.AddSimpleConsole()).CreateLogger<InstanceWorker>();
+            _logger = loggerFactory?.CreateLogger<InstanceWorker>() ?? new SerilogLoggerFactory(Serilog.Log.Logger).CreateLogger<InstanceWorker>();
 
             _dbFactory = dbContextFactory;
             _filter = new IpxFilter();
@@ -1278,14 +1097,7 @@ namespace IpxListenerService
 
         public IpxFilter()
         {
-            _logger = LoggerFactory.Create(builder =>
-            {
-                builder.AddSimpleConsole(options =>
-                {
-                    options.IncludeScopes = false;
-                    options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
-                });
-            }).CreateLogger<IpxFilter>();
+            _logger = new SerilogLoggerFactory(Serilog.Log.Logger).CreateLogger<IpxFilter>();
         }
 
         /// <summary>

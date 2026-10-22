@@ -2,7 +2,8 @@
   "global_settings": {
     "xml_analytics_path": "C:\\IPXAnalytics",
     "database": {
-      "url": "postgresql://postgres:admin@127.0.0.1:5432/ipx_events_beta"
+      "connection_string": "Host=127.0.0.1;Port=5432;Database=ipx_events_beta;Username=postgres;Password=admin;",
+      "url": "Host=127.0.0.1;Port=5432;Database=ipx_events_beta;Username=postgres;Password=admin;"
     },
     "tcp_ports": {
       "gpu_0": 8150,

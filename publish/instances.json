@@ -1,0 +1,60 @@
+{
+  "instances": {
+    "max person01-test": {
+      "name": "max person01-test",
+      "host": "192.168.1.146",
+      "port": 8150,
+      "channel": 99,
+      "gpu": 0,
+      "log_level": "INFO",
+      "auto_start": false,
+      "reconnect_interval": 5,
+      "status": "Stopped",
+      "description": "Auto-generated from NVidiaGPU-0.xml on 2025-08-20 17:22:30",
+      "xml_last_modified": "2025-08-19 05:04:48",
+      "xml_source_file": "NVidiaGPU-0.xml"
+    },
+    "max person01": {
+      "name": "max person01",
+      "host": "192.168.1.146",
+      "port": 8150,
+      "channel": 7,
+      "gpu": 0,
+      "log_level": "INFO",
+      "auto_start": false,
+      "reconnect_interval": 5,
+      "status": "Stopped",
+      "description": "Auto-generated from NVidiaGPU-0.xml on 2025-08-20 17:22:30",
+      "xml_last_modified": "2025-08-19 05:04:48",
+      "xml_source_file": "NVidiaGPU-0.xml"
+    },
+    "max person": {
+      "name": "max person",
+      "host": "192.168.1.146",
+      "port": 8150,
+      "channel": 19,
+      "gpu": 0,
+      "log_level": "INFO",
+      "auto_start": false,
+      "reconnect_interval": 5,
+      "status": "Stopped",
+      "description": "Auto-generated from NVidiaGPU-0.xml on 2025-08-20 17:22:30",
+      "xml_last_modified": "2025-08-19 05:04:48",
+      "xml_source_file": "NVidiaGPU-0.xml"
+    },
+    "PPE": {
+      "name": "PPE",
+      "host": "192.168.1.146",
+      "port": 8153,
+      "channel": 1,
+      "gpu": 3,
+      "log_level": "INFO",
+      "auto_start": false,
+      "reconnect_interval": 5,
+      "status": "Stopped",
+      "description": "Auto-generated from NVidiaGPU-3.xml on 2025-08-20 17:22:30",
+      "xml_last_modified": "2025-05-19 15:42:45",
+      "xml_source_file": "NVidiaGPU-3.xml"
+    }
+  }
+}

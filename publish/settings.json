@@ -1,0 +1,48 @@
+{
+  "global_settings": {
+    "xml_analytics_path": "C:\\IPXAnalytics",
+    "database": {
+      "connection_string": "Host=127.0.0.1;Port=5432;Database=ipx_events_beta;Username=postgres;Password=admin;",
+      "url": "Host=127.0.0.1;Port=5432;Database=ipx_events_beta;Username=postgres;Password=admin;"
+    },
+    "tcp_ports": {
+      "gpu_0": 8150,
+      "gpu_1": 8151,
+      "gpu_2": 8152,
+      "gpu_3": 8153
+    },
+    "xml_files": {
+      "gpu_0": "NVidiaGPU-0.xml",
+      "gpu_1": "NVidiaGPU-1.xml",
+      "gpu_2": "NVidiaGPU-2.xml",
+      "gpu_3": "NVidiaGPU-3.xml"
+    },
+    "auto_generation": {
+      "enabled": true,
+      "scan_on_startup": true,
+      "default_host": "192.168.1.146",
+      "active_cameras_only": true,
+      "auto_backup": true
+    },
+    "file_watching": {
+      "enabled": true,
+      "watch_settings_file": true,
+      "watch_xml_files": true,
+      "restart_on_settings_change": true,
+      "regenerate_on_xml_change": true,
+      "debounce_delay_ms": 2000,
+      "max_restart_attempts": 3,
+      "restart_delay_ms": 5000,
+      "monitored_extensions": [
+        ".xml",
+        ".json"
+      ],
+      "exclude_temp_files": true
+    },
+    "instance_defaults": {
+      "log_level": "INFO",
+      "auto_start": false,
+      "reconnect_interval": 5
+    }
+  }
+}
