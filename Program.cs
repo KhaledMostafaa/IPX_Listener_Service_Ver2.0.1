@@ -147,7 +147,7 @@ namespace IpxListenerService
             }
         }
 
-        public static bool EnsureDatabaseCreated(int maxRetries = 3, int delaySeconds = 2)
+        public static bool EnsureDatabaseCreated(int maxRetries = 3, int delaySeconds = 2, bool isBackgroundRetry = false)
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             var configPath = Path.Combine(baseDir, "settings.json");
@@ -166,7 +166,10 @@ namespace IpxListenerService
             }
 
             var connectionString = GetPostgresConnectionString(settings?.GlobalSettings?.Database);
-            Log.Information($"Database ConnectionString resolved: {MaskConnectionString(connectionString)}");
+            if (!isBackgroundRetry)
+            {
+                Log.Information($"Database ConnectionString resolved: {MaskConnectionString(connectionString)}");
+            }
 
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
@@ -177,7 +180,10 @@ namespace IpxListenerService
                     optionsBuilder.UseLoggerFactory(new SerilogLoggerFactory(Log.Logger));
 
                     using var dbContext = new DatabaseContext(optionsBuilder.Options);
-                    Log.Information($"Checking database and applying migrations (attempt {attempt}/{maxRetries})...");
+                    if (!isBackgroundRetry)
+                    {
+                        Log.Information($"Checking database and applying migrations (attempt {attempt}/{maxRetries})...");
+                    }
 
                     var pendingMigrations = dbContext.Database.GetPendingMigrations().ToList();
                     if (pendingMigrations.Count > 0)
@@ -203,7 +209,14 @@ namespace IpxListenerService
                     }
                     else
                     {
-                        Log.Error(ex, $"Failed to connect to database or apply migrations after {maxRetries} attempt(s). Target: {MaskConnectionString(connectionString)}. Check if PostgreSQL service is running and accessible on 127.0.0.1:5432.");
+                        if (isBackgroundRetry)
+                        {
+                            Log.Warning($"Background database check failed: {ex.Message}. Target: {MaskConnectionString(connectionString)}");
+                        }
+                        else
+                        {
+                            Log.Error(ex, $"Failed to connect to database or apply migrations after {maxRetries} attempt(s). Target: {MaskConnectionString(connectionString)}. Check if PostgreSQL service is running and accessible on 127.0.0.1:5432.");
+                        }
                         return false;
                     }
                 }

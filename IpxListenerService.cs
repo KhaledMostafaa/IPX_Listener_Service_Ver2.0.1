@@ -10,7 +10,6 @@ using System.Diagnostics.Metrics;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
-using System.ServiceProcess;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -22,7 +21,7 @@ using IpxListenerService.Models;
 
 namespace IpxListenerService
 {
-    public class IpxListenerService : ServiceBase, Microsoft.Extensions.Hosting.IHostedService
+    public class IpxListenerService : Microsoft.Extensions.Hosting.IHostedService
     {
         private readonly ILogger _logger;
         private readonly ILoggerFactory _loggerFactory;
@@ -52,8 +51,6 @@ namespace IpxListenerService
 
         public IpxListenerService(ILogger<IpxListenerService>? logger = null, ILoggerFactory? loggerFactory = null)
         {
-            ServiceName = "IPXSListenerService";
-
             _loggerFactory = loggerFactory ?? new SerilogLoggerFactory(Serilog.Log.Logger);
             _logger = logger ?? _loggerFactory.CreateLogger<IpxListenerService>();
         }
@@ -94,17 +91,16 @@ namespace IpxListenerService
             OnStop();
         }
 
-        protected override void OnStart(string[] args)
+        public void Stop()
+        {
+            OnStop();
+        }
+
+        public void OnStart(string[]? args = null)
         {
             try
             {
                 _logger.LogInformation("Service is starting...");
-
-                if (!Environment.UserInteractive)
-                    base.RequestAdditionalTime(60000);
-
-                // ✅ لا حاجة لفحص الترخيص هنا لأن Program.cs تأكد بالفعل أنه صالح
-                // لكن سنضيف فحص دوري في الخلفية لاحقًا
 
                 IsRunning = true;
                 _cancellationTokenSource = new CancellationTokenSource();
@@ -126,7 +122,7 @@ namespace IpxListenerService
             }
         }
 
-        protected override void OnStop()
+        public void OnStop()
         {
             _logger.LogInformation("Service is stopping...");
 
@@ -180,7 +176,7 @@ namespace IpxListenerService
                 bool dbReady = false;
                 while (!dbReady && !_cancellationTokenSource.Token.IsCancellationRequested)
                 {
-                    dbReady = Program.EnsureDatabaseCreated(maxRetries: 1, delaySeconds: 0);
+                    dbReady = Program.EnsureDatabaseCreated(maxRetries: 1, delaySeconds: 0, isBackgroundRetry: true);
                     if (!dbReady)
                     {
                         _logger.LogWarning("PostgreSQL is not reachable yet. Retrying database initialization in 10 seconds...");
